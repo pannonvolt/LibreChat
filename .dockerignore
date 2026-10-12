@@ -15,3 +15,6 @@ docs
 
 # Ignore all hidden files
 .*
+
+# Include the configured custom endpoint in the image.
+!librechat.yaml
