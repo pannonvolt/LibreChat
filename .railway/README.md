@@ -1,6 +1,6 @@
 # LibreChat + OpenRouter telepítés Railway-re
 
-A `docker-compose.yml` Dockerhez/Coolifyhoz készült. Railway nem hozza létre belőle a szolgáltatásokat. A teljes Railway környezetet az itt található `railway.ts` definiálja, a Railway CLI Infrastructure as Code funkciójával.
+A `docker-compose.yml` Dockerhez/Coolifyhoz készült. A Railway Compose-importtal is képes szolgáltatásokat és volume-okat előkészíteni, de nem minden Compose-beállítást támogat; az importált forrásokat, változókat és hálózatot ellenőrizni kell. A teljes Railway környezetet az itt található `railway.ts` definiálja, a Railway CLI Infrastructure as Code funkciójával.
 
 ## Szolgáltatások
 
@@ -77,3 +77,13 @@ Hivatalos útmutatók:
 - https://docs.railway.com/infrastructure-as-code
 - https://docs.railway.com/infrastructure-as-code/reference
 - https://www.librechat.ai/docs/configuration/librechat_yaml/ai_endpoints/openrouter
+
+## Coolify: telepítés helyi előkészítés nélkül
+
+Új Git-alapú alkalmazás: `https://github.com/pannonvolt/LibreChat.git`, ág `main`, build pack Docker Compose, base directory `/`, Compose location `/docker-compose.coolify.yml`. Normál (nem Raw) Compose módot használj.
+
+A Coolify a `SERVICE_HEX_*` változókból automatikusan generálja és megőrzi az adatbázis-jelszavakat és a megfelelő hosszúságú hexadecimális titkosítási kulcsokat. A `SERVICE_URL_API_3080` a chat domaint és belső 3080-as proxyportot adja. A szükséges kézi változó: `OPENROUTER_KEY`, a saját OpenRouter-kulcsod.
+
+Mentés után ellenőrizd a generált változókat és az `api` szolgáltatás domainjét, majd Deploy. A DOMAIN_CLIENT és DOMAIN_SERVER ugyanazt a generált URL-t használja. Saját domain esetén a SERVICE_URL_API_3080 értékét is az alkalmazás tényleges nyilvános URL-jére állítsd. Az admin-panel külön domain nélkül belső szolgáltatás marad; szükség esetén rendelj hozzá domaint a 3000-as belső porton.
+
+Regisztráció után állítsd az ALLOW_REGISTRATION változót false-ra és deployolj újra. A kulcsokhoz és volume-okhoz a Coolify mentéseit használd. Ezt a Coolify-specifikus Compose fájlt ne futtasd közvetlen Docker Compose-szal vagy Railway-importtal: a SERVICE_HEX és SERVICE_URL értékek generálását a Coolify végzi. Régebbi Coolify-verzióban a Git-alapú magic változók támogatása hiányozhat; ilyen esetben frissítés vagy kézi változómegadás szükséges.
