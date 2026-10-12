@@ -1,0 +1,124 @@
+# Coolify Git-based Docker Compose deployment.
+# Coolify generates and stores the SERVICE_HEX_* credentials.
+# Set OPENROUTER_KEY in Environment Variables; use the api service on port 3080.
+# No local setup script or .env file is required.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.railway
+    restart: unless-stopped
+    depends_on:
+      mongodb: { condition: service_healthy }
+      meilisearch: { condition: service_healthy }
+      rag_api: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: '3080'
+      CONFIG_PATH: /app/librechat.yaml
+      ENDPOINTS: custom,agents
+      OPENROUTER_KEY: ${OPENROUTER_KEY:?Set OPENROUTER_KEY in Coolify}
+      MONGO_URI: mongodb://librechat:${SERVICE_HEX_64_MONGO}@mongodb:27017/LibreChat?authSource=admin
+      MEILI_HOST: http://meilisearch:7700
+      MEILI_MASTER_KEY: ${SERVICE_HEX_64_MEILI}
+      SEARCH: 'true'
+      RAG_API_URL: http://rag_api:8000
+      JWT_SECRET: ${SERVICE_HEX_64_JWT}
+      JWT_REFRESH_SECRET: ${SERVICE_HEX_64_REFRESH}
+      CREDS_KEY: ${SERVICE_HEX_64_CREDSKEY}
+      CREDS_IV: ${SERVICE_HEX_32_CREDSIV}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      ALLOW_EMAIL_LOGIN: 'true'
+      DOMAIN_CLIENT: ${SERVICE_URL_API_3080}
+      DOMAIN_SERVER: ${SERVICE_URL_API_3080}
+    volumes: ['librechat-data:/app/data']
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+  admin-panel:
+    image: registry.librechat.ai/clickhouse/librechat-admin-panel:latest
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    environment:
+      PORT: '3000'
+      SESSION_SECRET: ${SERVICE_HEX_64_ADMINSESSION}
+      API_SERVER_URL: http://api:3080
+      VITE_API_BASE_URL: ${SERVICE_URL_API_3080}
+      SESSION_COOKIE_SECURE: 'true'
+  mongodb:
+    image: mongo:8.0.20
+    command: [mongod, --bind_ip_all, --ipv6]
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: librechat
+      MONGO_INITDB_ROOT_PASSWORD: ${SERVICE_HEX_64_MONGO}
+    volumes: ['mongo-data:/data/db']
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "quit(db.adminCommand('ping').ok ? 0 : 1)"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+  meilisearch:
+    image: getmeili/meilisearch:v1.35.1
+    restart: unless-stopped
+    environment:
+      MEILI_HTTP_ADDR: 0.0.0.0:7700
+      MEILI_NO_ANALYTICS: 'true'
+      MEILI_MASTER_KEY: ${SERVICE_HEX_64_MEILI}
+      MEILI_MAX_INDEXING_THREADS: '2'
+    volumes: ['search-data:/meili_data']
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:7700/health']
+      interval: 10s
+      timeout: 10s
+      retries: 10
+  vectordb:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: librechat
+      POSTGRES_USER: librechat
+      POSTGRES_PASSWORD: ${SERVICE_HEX_64_POSTGRES}
+    volumes: ['postgres-data:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'librechat', '-d', 'librechat']
+      interval: 10s
+      timeout: 10s
+      retries: 10
+  rag_api:
+    image: ghcr.io/danny-avila/librechat-rag-api-dev:v0.8.0
+    restart: unless-stopped
+    depends_on:
+      vectordb: { condition: service_healthy }
+    environment:
+      RAG_HOST: 0.0.0.0
+      RAG_PORT: '8000'
+      JWT_SECRET: ${SERVICE_HEX_64_JWT}
+      DB_HOST: vectordb
+      DB_PORT: '5432'
+      POSTGRES_DB: librechat
+      POSTGRES_USER: librechat
+      POSTGRES_PASSWORD: ${SERVICE_HEX_64_POSTGRES}
+      EMBEDDINGS_PROVIDER: huggingface
+      EMBEDDINGS_MODEL: sentence-transformers/all-MiniLM-L6-v2
+      HF_HOME: /app/hf-cache
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '2'
+    volumes: ['embedding-cache:/app/hf-cache']
+    healthcheck:
+      test: ['CMD', 'python', '-c', "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=10)"]
+      interval: 20s
+      timeout: 15s
+      retries: 20
+      start_period: 180s
+volumes:
+  librechat-data:
+  mongo-data:
+  postgres-data:
+  search-data:
+  embedding-cache:
